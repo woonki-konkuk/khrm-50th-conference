@@ -474,14 +474,18 @@
   #dkToc:hover{color:var(--dk-ink2)}
   #dkTocPanel{position:absolute;inset:0;z-index:9;display:none;background:var(--dk-bg);padding:4.2% 6% 3.5%;overflow:auto}
   #dkTocPanel.open{display:block}
-  #dkTocPanel .th{font-family:var(--dk-serif);font-size:2.6vw;font-weight:800;color:var(--dk-green-deep);margin-bottom:1.2vw}
+  #dkTocPanel .th{font-family:var(--dk-serif);font-size:2.6vw;font-weight:800;color:var(--dk-green-deep);margin-bottom:1.2vw;display:flex;align-items:baseline;gap:1.4vw}
+  #dkTocPanel .th small{font-family:"Pretendard",sans-serif;font-size:1.05vw;font-weight:400;color:var(--dk-ink3);letter-spacing:0}
+  #dkTocPanel .th button{font-family:"Pretendard",sans-serif;font-size:1.05vw;font-weight:400;color:var(--dk-ink2);background:none;border:none;box-shadow:none;padding:0;margin:0;width:auto;cursor:pointer;text-decoration:underline}
   #dkTocPanel .tl{columns:3;column-gap:3vw}
   #dkTocPanel .tr{display:flex;gap:.7vw;align-items:baseline;padding:.2vw .5vw;border-radius:.4vw;font-size:1.22vw;line-height:1.45;color:var(--dk-ink);cursor:pointer;break-inside:avoid}
   #dkTocPanel .tr:hover{background:var(--dk-green-soft)}
   #dkTocPanel .tr .no{flex:0 0 1.6vw;text-align:right;color:var(--dk-ink4);font-size:1vw;font-variant-numeric:tabular-nums}
   #dkTocPanel .tr.sec{margin-top:.8vw;color:var(--dk-green-deep);font-weight:700;break-after:avoid}
   #dkTocPanel .tr.cur{background:var(--dk-green-soft)}
-  #dkTocPanel .tr.off{opacity:.4}
+  #dkTocPanel .tr input{flex:0 0 1.05vw;width:1.05vw;height:1.05vw;margin:0;padding:0;align-self:center;accent-color:#6b675e;cursor:pointer}
+  #dkTocPanel .tr.off .tt{text-decoration:line-through;color:var(--dk-ink4);font-weight:400}   /* 체크 = 줄 긋고 발표에서 건너뜀 */
+  #dkTocPanel .tr.off .no{color:var(--dk-ink4)}
   #dkCount{cursor:pointer}
   #dkCount:hover{color:var(--dk-ink2)}
   #dkHiddenTag{display:none;position:absolute;right:1.4%;top:2.4%;z-index:7;font-size:12px;font-weight:700;color:#fff;background:#b8322b;border-radius:999px;padding:4px 12px}
@@ -588,6 +592,14 @@
 </div></div>
 <script>
 const slides = [...document.querySelectorAll('#slides .slide')]; let idx = 0;
+// 건너뛸 슬라이드: 목차에서 체크한 것. 이 브라우저(localStorage)에 저장되고, 슬라이드는 제목으로 기억한다
+const HIDE_KEY = 'khrm_deck_hidden:' + location.pathname;
+const slideKey = el => ((el.querySelector('.s-kicker')||{}).textContent||'') + '|' + ((el.querySelector('.s-title')||{}).textContent||'');
+let hidden = new Set(); try { hidden = new Set(JSON.parse(localStorage.getItem(HIDE_KEY) || '[]')); } catch(e){}
+const saveHidden = () => { try { localStorage.setItem(HIDE_KEY, JSON.stringify([...hidden])); } catch(e){} };
+const isHidden = el => hidden.has(slideKey(el));
+const updateCount = () => { const vis = slides.filter(s => !isHidden(s)), pos = vis.indexOf(slides[idx]);
+  document.getElementById('dkCount').textContent = pos >= 0 ? (pos+1)+' / '+vis.length : '건너뛰는 슬라이드 · '+(idx+1)+'번'; };
 // 단계 표시(파워포인트식): data-steps 가 있는 차트는 한 번 넘길 때마다 다음 단계(data-stage)로 진행
 const buildOf = el => el.querySelector('[data-steps]');
 const show = (i, from) => {            // from 'back' = 뒤에서 넘어옴(완성 상태), 그 밖 = 첫 단계부터
@@ -596,12 +608,13 @@ const show = (i, from) => {            // from 'back' = 뒤에서 넘어옴(완�
   if (b) b.dataset.stage = from === 'back' ? b.dataset.steps : 0;
   slides.forEach((s,k)=> s.classList.toggle('on', k===idx));
   if (b && from !== 'back'){ void b.offsetWidth; b.dataset.stage = 1; }
-  document.getElementById('dkCount').textContent = (idx+1)+' / '+slides.length;
+  updateCount();
 };
 const step = d => {                    // 클릭·키 한 번: 남은 단계가 있으면 단계를, 없으면 슬라이드를 넘긴다
   const b = buildOf(slides[idx]);
   if (b){ const n = +b.dataset.steps, st = +(b.dataset.stage || n) + d; if (st >= 1 && st <= n){ b.dataset.stage = st; return; } }
-  const j = idx + d; if (j >= 0 && j < slides.length) show(j, d < 0 ? 'back' : 'fwd');
+  let j = idx + d; while (j >= 0 && j < slides.length && isHidden(slides[j])) j += d;      // 체크한 슬라이드는 건너뜀
+  if (j >= 0 && j < slides.length) show(j, d < 0 ? 'back' : 'fwd');
 };
 const deckEl = document.getElementById('deck');
 const fs = () => document.fullscreenElement ? document.exitFullscreen() : (deckEl.requestFullscreen && deckEl.requestFullscreen());
@@ -625,13 +638,19 @@ const esc = v => String(v).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':
 const tocTitle = el => { const te = el.querySelector('.s-title'); if (!te) return ''; const c = te.cloneNode(true); c.querySelectorAll('.s-en').forEach(x => x.remove());
   return c.innerHTML.replace(/<br\s*\/?>/gi,' ').replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/\s+/g,' ').trim(); };
 const tocPanel = document.getElementById('dkTocPanel');
-const renderToc = () => { tocPanel.innerHTML = '<div class="th">목차</div><div class="tl">' + slides.map((el,i) => {
-  const part = el.classList.contains('part'), k = part ? ((el.querySelector('.s-kicker')||{}).textContent||'').trim() : '';
-  return '<div class="tr'+(part?' sec':'')+(i===idx?' cur':'')+'" data-go="'+i+'"><span class="no">'+(i+1)+'</span><span class="tt">'+esc((k ? k+' · ' : '')+tocTitle(el))+'</span></div>'; }).join('') + '</div>'; };
+const renderToc = () => { const nOff = slides.filter(isHidden).length;      // 체크한 슬라이드 = 줄을 긋고, 넘길 때 건너뜀
+  tocPanel.innerHTML = '<div class="th">목차<small>체크한 슬라이드는 넘길 때 건너뜀'+(nOff ? ' · '+nOff+'장 건너뜀' : '')+'</small>'+(nOff ? '<button data-act="all">모두 해제</button>' : '')+'</div><div class="tl">' + slides.map((el,i) => {
+  const part = el.classList.contains('part'), k = part ? ((el.querySelector('.s-kicker')||{}).textContent||'').trim() : '', off = isHidden(el);
+  return '<div class="tr'+(part?' sec':'')+(i===idx?' cur':'')+(off?' off':'')+'" data-go="'+i+'"><input type="checkbox" data-hide="'+i+'" '+(off?'checked':'')+' title="체크하면 발표에서 건너뜀"><span class="no">'+(i+1)+'</span><span class="tt">'+esc((k ? k+' · ' : '')+tocTitle(el))+'</span></div>'; }).join('') + '</div>'; };
 const toggleToc = open => { const o = open ?? !tocPanel.classList.contains('open'); if (o) renderToc(); tocPanel.classList.toggle('open', o); };
 document.getElementById('dkToc').addEventListener('click', e => { e.stopPropagation(); toggleToc(); });
 document.getElementById('dkToc').addEventListener('dblclick', e => e.stopPropagation());
-tocPanel.addEventListener('click', e => { e.stopPropagation(); const go = e.target.closest('[data-go]'); if (go) show(+go.dataset.go); toggleToc(false); });
+tocPanel.addEventListener('click', e => { e.stopPropagation();
+  if (e.target.closest('input')) return;                                                  // 체크는 아래 change 에서 처리
+  if (e.target.closest("[data-act='all']")){ hidden.clear(); saveHidden(); updateCount(); renderToc(); return; }
+  const go = e.target.closest('[data-go]'); if (go) show(+go.dataset.go); toggleToc(false); });
+tocPanel.addEventListener('change', e => { const i = e.target.dataset.hide; if (i == null) return;
+  const k = slideKey(slides[+i]); hidden.has(k) ? hidden.delete(k) : hidden.add(k); saveHidden(); updateCount(); renderToc(); });
 tocPanel.addEventListener('dblclick', e => e.stopPropagation());
 document.addEventListener('keydown', e => { if (e.key === 'Escape') toggleToc(false); });
 // 툴팁(data-tip)
